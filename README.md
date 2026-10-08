@@ -19,18 +19,26 @@ a cuarentena con su motivo.
 ## Cómo ejecutarlo
 
 1. **Base de datos:** en SSMS ejecuta, en orden, `database/01_schema.sql` y `database/02_batch.sql`.
+
 2. **API:**
+
 ```powershell
    cd backend/Commerce.Api
    dotnet run --launch-profile http
 ```
+
    La cadena de conexión está en `appsettings.json` (`ConnectionStrings:Default`).
+   Si tu instancia de SQL Server se llama distinto, cambia `Server=` en esa cadena.
+   `TrustServerCertificate=True` se usa solo para desarrollo local.
+
 3. **Front:**
+
 ```powershell
    cd frontend/commerce-web
    npm install
    ng serve
 ```
+
    Abrir http://localhost:4200
 
 ## Endpoints
@@ -44,6 +52,7 @@ a cuarentena con su motivo.
 ## Reglas de validación (cuarentena)
 
 Se mueve a cuarentena un registro si:
+
 - `pc_nomcomred` está vacío
 - `pc_numdoc` está vacío, o contiene letras o caracteres especiales
 
