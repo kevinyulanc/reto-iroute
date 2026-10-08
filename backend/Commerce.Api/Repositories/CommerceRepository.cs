@@ -14,50 +14,39 @@ public class CommerceRepository : ICommerceRepository
             ?? throw new InvalidOperationException("Falta la cadena de conexión 'Default'.");
 
     /// <summary>
-    /// Inserta todas las filas con sp_create_commerce usando una sola conexión,
-    /// un solo comando reutilizado y una transacción (todo o nada).
+    /// Inserta todas las filas en una sola llamada a la base de datos, enviándolas
+    /// como parámetro tipo tabla a sp_create_commerce_batch (una sola sentencia, atómica).
     /// </summary>
     public async Task<int> InsertBatchAsync(IReadOnlyCollection<CommerceRecord> records, CancellationToken ct)
     {
+        var table = new DataTable();
+        table.Columns.Add("pc_processdate", typeof(DateTime));
+        table.Columns.Add("pc_tipodoc", typeof(string));
+        table.Columns.Add("pc_numdoc", typeof(string));
+        table.Columns.Add("pc_nomcomred", typeof(string));
+        table.Columns.Add("pc_razonsocial", typeof(string));
+        table.Columns.Add("pc_direccion", typeof(string));
+        table.Columns.Add("pc_telefono", typeof(string));
+        table.Columns.Add("pc_email", typeof(string));
+
+        foreach (var r in records)
+        {
+            table.Rows.Add(r.PcProcessdate.Date, Db(r.PcTipodoc), Db(r.PcNumdoc), Db(r.PcNomcomred),
+                           Db(r.PcRazonsocial), Db(r.PcDireccion), Db(r.PcTelefono), Db(r.PcEmail));
+        }
+
         await using var conn = new SqlConnection(_connectionString);
         await conn.OpenAsync(ct);
-        await using var tx = (SqlTransaction)await conn.BeginTransactionAsync(ct);
-
-        await using var cmd = new SqlCommand("dbo.sp_create_commerce", conn, tx)
+        await using var cmd = new SqlCommand("dbo.sp_create_commerce_batch", conn)
         {
             CommandType = CommandType.StoredProcedure
         };
-        var pDate = cmd.Parameters.Add("@pc_processdate", SqlDbType.Date);
-        var pTipo = cmd.Parameters.Add("@pc_tipodoc", SqlDbType.NVarChar, 20);
-        var pNumdoc = cmd.Parameters.Add("@pc_numdoc", SqlDbType.NVarChar, 50);
-        var pNomcom = cmd.Parameters.Add("@pc_nomcomred", SqlDbType.NVarChar, 200);
-        var pRazon = cmd.Parameters.Add("@pc_razonsocial", SqlDbType.NVarChar, 200);
-        var pDir = cmd.Parameters.Add("@pc_direccion", SqlDbType.NVarChar, 300);
-        var pTel = cmd.Parameters.Add("@pc_telefono", SqlDbType.NVarChar, 50);
-        var pEmail = cmd.Parameters.Add("@pc_email", SqlDbType.NVarChar, 150);
+        var p = cmd.Parameters.Add("@rows", SqlDbType.Structured);
+        p.TypeName = "dbo.commerce_type";
+        p.Value = table;
 
-        try
-        {
-            foreach (var r in records)
-            {
-                pDate.Value = r.PcProcessdate.Date;
-                pTipo.Value = Db(r.PcTipodoc);
-                pNumdoc.Value = Db(r.PcNumdoc);
-                pNomcom.Value = Db(r.PcNomcomred);
-                pRazon.Value = Db(r.PcRazonsocial);
-                pDir.Value = Db(r.PcDireccion);
-                pTel.Value = Db(r.PcTelefono);
-                pEmail.Value = Db(r.PcEmail);
-                await cmd.ExecuteNonQueryAsync(ct);
-            }
-            await tx.CommitAsync(ct);
-        }
-        catch
-        {
-            await tx.RollbackAsync(ct);
-            throw;
-        }
-        return records.Count;
+        var result = await cmd.ExecuteScalarAsync(ct);
+        return Convert.ToInt32(result);
     }
 
     /// <summary>Ejecuta sp_process_commerce y devuelve cuántos registros fueron a cuarentena.</summary>
